@@ -80,6 +80,39 @@ fun AdminDashboard(
                 contentPadding = PaddingValues(top = 16.dp, bottom = 16.dp)
             ) {
                 item {
+                    // بطاقة معلومات المحل (shopId)
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f)),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.secondary.copy(alpha = 0.3f))
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(16.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Column {
+                                Text("كود المحل الخاص بك (لربط الموظفين):", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSecondaryContainer)
+                                Text(
+                                    text = AppRepository.currentUser?.shopId ?: "غير متوفر",
+                                    fontSize = 20.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = MaterialTheme.colorScheme.secondary,
+                                    letterSpacing = 2.sp
+                                )
+                            }
+                            IconButton(onClick = {
+                                scope.launch {
+                                    snackbarHostState.showSnackbar("قم بنسخ الكود يدوياً ومشاركته")
+                                }
+                            }) {
+                                Icon(Icons.Default.ContentCopy, contentDescription = "نسخ", tint = MaterialTheme.colorScheme.secondary)
+                            }
+                        }
+                    }
+                }
+
+                item {
                     Text("إحصائيات اليوم", fontSize = 18.sp, fontWeight = FontWeight.Bold)
                     Spacer(modifier = Modifier.height(8.dp))
                     Row(

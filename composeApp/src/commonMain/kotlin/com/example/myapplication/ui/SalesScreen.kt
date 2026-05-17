@@ -379,7 +379,7 @@ fun ProductSaleItem(product: Product, onSale: (Int, Double) -> Unit) {
 
 @Composable
 fun SaleRecordItem(sale: SaleRecord, onEdit: () -> Unit, onDelete: () -> Unit) {
-    val scope = rememberCoroutineScope()
+    rememberCoroutineScope()
     val dateText = remember(sale.date) {
         PlatformUtils.formatDate(sale.date)
     }

@@ -14,12 +14,12 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
-class InventoryViewModel(private val repository: AppRepository) : ViewModel() {
+class InventoryViewModel : ViewModel() {
 
     private val _errorMessage = MutableStateFlow<String?>(null)
     val errorMessage = _errorMessage.asStateFlow()
 
-    val products: StateFlow<List<Product>> = repository.products
+    val products: StateFlow<List<Product>> = AppRepository.products
         .stateIn(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(5000),
@@ -29,7 +29,7 @@ class InventoryViewModel(private val repository: AppRepository) : ViewModel() {
     fun addProduct(product: Product) {
         viewModelScope.launch {
             try {
-                repository.addProduct(product)
+                AppRepository.addProduct(product)
                 _errorMessage.value = null
             } catch (e: Exception) {
                 e.printStackTrace()
@@ -41,7 +41,7 @@ class InventoryViewModel(private val repository: AppRepository) : ViewModel() {
     fun updateProduct(product: Product) {
         viewModelScope.launch {
             try {
-                repository.updateProduct(product)
+                AppRepository.updateProduct(product)
                 _errorMessage.value = null
             } catch (e: Exception) {
                 e.printStackTrace()
@@ -55,7 +55,7 @@ class InventoryViewModel(private val repository: AppRepository) : ViewModel() {
             val productToDelete = products.value.find { it.productId == productId }
             if (productToDelete != null) {
                 try {
-                    repository.deleteProduct(productId)
+                    AppRepository.deleteProduct(productId)
                     onUndoAvailable(productToDelete)
                     _errorMessage.value = null
                 } catch (e: Exception) {
@@ -69,7 +69,7 @@ class InventoryViewModel(private val repository: AppRepository) : ViewModel() {
     fun restoreProduct(product: Product) {
         viewModelScope.launch {
             try {
-                repository.addProduct(product)
+                AppRepository.addProduct(product)
                 _errorMessage.value = null
             } catch (e: Exception) {
                 e.printStackTrace()
@@ -83,7 +83,7 @@ class InventoryViewModel(private val repository: AppRepository) : ViewModel() {
     companion object {
         val Factory: ViewModelProvider.Factory = viewModelFactory {
             initializer { 
-                InventoryViewModel(AppRepository) 
+                InventoryViewModel()
             }
         }
     }

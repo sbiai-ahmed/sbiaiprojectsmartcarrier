@@ -20,17 +20,11 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.myapplication.database.AppRepository
-import com.example.myapplication.database.toEntity
-import com.example.myapplication.database.toModel
 import com.example.myapplication.models.User
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
-import io.github.jan.supabase.auth.auth
-import io.github.jan.supabase.auth.providers.builtin.Email
-import io.github.jan.supabase.postgrest.postgrest
 
 @Composable
-fun LoginScreen(onLoginSuccess: (User) -> Unit) {
+fun LoginScreen(onLoginSuccess: (User) -> Unit, onNavigateToRegister: () -> Unit) {
     val scope = rememberCoroutineScope()
     var emailInput by remember { mutableStateOf("") }
     var passwordInput by remember { mutableStateOf("") }
@@ -38,23 +32,9 @@ fun LoginScreen(onLoginSuccess: (User) -> Unit) {
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var isLoading by remember { mutableStateOf(false) }
 
-    // تحسين الـ Regex وإزالة الـ Escape غير الضروري
+    // Regex للتحقق من تنسيق البريد الإلكتروني
     val emailRegex = remember { Regex("^[A-Za-z0-9+_.-]+@([A-Za-z0-9-]+\\.)+[A-Za-z]{2,}\$") }
     val isEmailError = emailInput.trim().isNotEmpty() && !emailRegex.matches(emailInput.trim())
-    
-    val usersState = AppRepository.users.collectAsState(initial = emptyList())
-    val users = usersState.value
-
-    // مزامنة سريعة عند الفتح
-    LaunchedEffect(Unit) {
-        try {
-            val client = com.example.myapplication.database.SupabaseManager.client
-            val cloudUsers = client.postgrest["users"].select().decodeList<User>()
-            cloudUsers.forEach { user ->
-                AppRepository.dao?.insertUser(user.toEntity(true))
-            }
-        } catch (_: Exception) {}
-    }
 
     MaterialTheme {
         Box(modifier = Modifier.fillMaxSize().background(Color.White)) {
@@ -63,12 +43,28 @@ fun LoginScreen(onLoginSuccess: (User) -> Unit) {
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center
             ) {
-                Box(modifier = Modifier.size(100.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)), contentAlignment = Alignment.Center) {
-                    Icon(Icons.Default.Smartphone, "Logo", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(50.dp))
+                Box(
+                    modifier = Modifier
+                        .size(100.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        Icons.Default.Smartphone,
+                        "Logo",
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(50.dp)
+                    )
                 }
 
                 Spacer(modifier = Modifier.height(24.dp))
-                Text("PRO TELEcom", fontSize = 32.sp, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.primary)
+                Text(
+                    "PRO TELEcom",
+                    fontSize = 32.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = MaterialTheme.colorScheme.primary
+                )
                 Text("صيانة وبيع الهواتف الذكية", fontSize = 14.sp, color = Color.Gray)
                 Spacer(modifier = Modifier.height(32.dp))
 
@@ -79,26 +75,36 @@ fun LoginScreen(onLoginSuccess: (User) -> Unit) {
 
                 OutlinedTextField(
                     value = emailInput,
-                    onValueChange = { emailInput = it; errorMessage = null },
+                    onValueChange = { 
+                        emailInput = it
+                        errorMessage = null 
+                    },
                     placeholder = { Text("البريد الإلكتروني") },
                     leadingIcon = { Icon(Icons.Default.Email, null, tint = MaterialTheme.colorScheme.primary) },
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(16.dp),
                     isError = isEmailError || errorMessage != null,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
-                    supportingText = { if (isEmailError) Text("تنسيق البريد الإلكتروني غير صحيح", color = Color.Red) }
+                    supportingText = { 
+                        if (isEmailError) Text("تنسيق البريد الإلكتروني غير صحيح", color = Color.Red) 
+                    }
                 )
 
                 Spacer(modifier = Modifier.height(16.dp))
 
                 OutlinedTextField(
                     value = passwordInput,
-                    onValueChange = { passwordInput = it; errorMessage = null },
+                    onValueChange = { 
+                        passwordInput = it
+                        errorMessage = null 
+                    },
                     placeholder = { Text("كلمة المرور") },
                     leadingIcon = { Icon(Icons.Default.Lock, null, tint = MaterialTheme.colorScheme.primary) },
                     trailingIcon = {
                         val image = if (passwordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff
-                        IconButton(onClick = { passwordVisible = !passwordVisible }) { Icon(image, null, tint = Color.Gray) }
+                        IconButton(onClick = { passwordVisible = !passwordVisible }) {
+                            Icon(image, null, tint = Color.Gray)
+                        }
                     },
                     visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
                     modifier = Modifier.fillMaxWidth(),
@@ -110,9 +116,10 @@ fun LoginScreen(onLoginSuccess: (User) -> Unit) {
                 Spacer(modifier = Modifier.height(24.dp))
 
                 Button(
-                    onClick = { 
+                    onClick = {
                         val enteredEmail = emailInput.trim().lowercase()
                         val enteredPassword = passwordInput.trim()
+                        
                         if (enteredEmail.isBlank() || enteredPassword.isBlank()) {
                             errorMessage = "يرجى ملء جميع الحقول"
                             return@Button
@@ -123,32 +130,16 @@ fun LoginScreen(onLoginSuccess: (User) -> Unit) {
                         
                         scope.launch {
                             try {
-                                val client = com.example.myapplication.database.SupabaseManager.client
-                                
-                                // البحث في القائمة المجمعة من السحابة/الهاتف
-                                val userMatch = users.find { it.email.trim().lowercase() == enteredEmail }
-                                
-                                if (userMatch != null && userMatch.password == enteredPassword) {
-                                    AppRepository.pullDataFromCloud()
-                                    onLoginSuccess(userMatch)
-                                } else {
-                                    try {
-                                        client.auth.signInWith(Email) {
-                                            this.email = enteredEmail
-                                            this.password = enteredPassword
-                                        }
-                                        // محاولة جلب المستخدم مرة أخرى بعد محاولة Auth
-                                        val finalUsers = AppRepository.dao?.getAllUsers()?.first()?.map { it.toModel() } ?: emptyList()
-                                        val authUser = finalUsers.find { it.email.trim().lowercase() == enteredEmail }
-                                        if (authUser != null) {
-                                            AppRepository.pullDataFromCloud()
-                                            onLoginSuccess(authUser)
-                                        } else {
-                                            errorMessage = "تم الدخول ولكن لم يتم العثور على بيانات الموظف"
-                                        }
-                                    } catch (_: Exception) {
-                                        errorMessage = "كلمة المرور أو البريد الإلكتروني غير صحيح"
+                                val success = AppRepository.loginUser(enteredEmail, enteredPassword)
+                                if (success) {
+                                    val user = AppRepository.currentUser
+                                    if (user != null) {
+                                        onLoginSuccess(user)
+                                    } else {
+                                        errorMessage = "فشل في استرداد بيانات المستخدم"
                                     }
+                                } else {
+                                    errorMessage = "كلمة المرور أو البريد الإلكتروني غير صحيح"
                                 }
                             } catch (e: Exception) {
                                 errorMessage = "خطأ في الاتصال: ${e.message}"
@@ -169,9 +160,20 @@ fun LoginScreen(onLoginSuccess: (User) -> Unit) {
                     }
                 }
 
-                Spacer(modifier = Modifier.height(32.dp))
+                Spacer(modifier = Modifier.height(16.dp))
+                
+                TextButton(onClick = onNavigateToRegister) {
+                    Text("ليس لديك حساب؟ إنشاء حساب مدير جديد", color = MaterialTheme.colorScheme.primary)
+                }
+
+                Spacer(modifier = Modifier.height(24.dp))
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("SBIAI AHMED", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary.copy(0.8f))
+                    Text(
+                        "SBIAI AHMED",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary.copy(0.8f)
+                    )
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Default.Phone, null, modifier = Modifier.size(10.dp), tint = Color.Gray)
                         Spacer(Modifier.width(4.dp))

@@ -19,6 +19,7 @@ data class PhoneDeviceEntity(
     val warrantyUntil: Long?,
     val assignedTechnicianId: String,
     val isSynced: Boolean = false,
+    val shopId: String = ""
 )
 
 @Entity(tableName = "products")
@@ -33,6 +34,7 @@ data class ProductEntity(
     val minStockAlert: Int,
     val barcode: String,
     val isSynced: Boolean = false,
+    val shopId: String = ""
 )
 
 @Entity(tableName = "expenses")
@@ -43,6 +45,7 @@ data class ExpenseEntity(
     val amount: Double,
     val date: Long,
     val isSynced: Boolean = false,
+    val shopId: String = ""
 )
 
 @Entity(tableName = "sales")
@@ -51,12 +54,13 @@ data class SaleEntity(
     val description: String,
     val amount: Double,
     val profit: Double,
-    val soldAtPrice: Double, // تمت الإضافة لحماية الموظف
+    val soldAtPrice: Double,
     val tvaAmount: Double,
     val date: Long,
     val processedBy: String,
     val customerId: String,
     val isSynced: Boolean = false,
+    val shopId: String = ""
 )
 
 @Entity(tableName = "purchases")
@@ -71,6 +75,7 @@ data class PurchaseEntity(
     val date: Long,
     val isPaid: Boolean,
     val isSynced: Boolean = false,
+    val shopId: String = ""
 )
 
 @Entity(tableName = "users")
@@ -83,6 +88,7 @@ data class UserEntity(
     val pinCode: String,
     val isActive: Boolean,
     val isSynced: Boolean = false,
+    val shopId: String = ""
 )
 
 @Entity(tableName = "audit_logs")
@@ -96,6 +102,7 @@ data class AuditLogEntity(
     val timestamp: Long,
     val details: String,
     val isSynced: Boolean = false,
+    val shopId: String = ""
 )
 
 @Entity(tableName = "expense_categories")
@@ -103,6 +110,7 @@ data class ExpenseCategoryEntity(
     @PrimaryKey val id: String,
     val name: String,
     val isSynced: Boolean = false,
+    val shopId: String = ""
 )
 
 @Entity(tableName = "suppliers")
@@ -112,6 +120,7 @@ data class SupplierEntity(
     val phoneNumber: String,
     val totalDebt: Double,
     val isSynced: Boolean = false,
+    val shopId: String = ""
 )
 
 @Entity(tableName = "sections")
@@ -121,6 +130,7 @@ data class SectionEntity(
     val userId: String,
     val iconName: String,
     val isSynced: Boolean = false,
+    val shopId: String = ""
 )
 
 @Dao
@@ -263,7 +273,7 @@ interface AppDao {
         SupplierEntity::class,
         SectionEntity::class
     ], 
-    version = 9 // تم رفع الإصدار لإضافة الحقول الجديدة
+    version = 10 // تم رفع الإصدار لإضافة shopId
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun dao(): AppDao

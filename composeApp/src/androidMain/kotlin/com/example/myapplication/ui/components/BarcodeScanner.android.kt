@@ -75,7 +75,7 @@ private fun ScannerContent(
     onBarcodeScanned: (String) -> Unit,
     onClose: () -> Unit
 ) {
-    val context = LocalContext.current
+    LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val cameraExecutor = remember { Executors.newSingleThreadExecutor() }
     
@@ -92,7 +92,7 @@ private fun ScannerContent(
                     val cameraProvider = cameraProviderFuture.get()
                     
                     val preview = Preview.Builder().build().also {
-                        it.setSurfaceProvider(previewView.surfaceProvider)
+                        it.surfaceProvider = previewView.surfaceProvider
                     }
                     
                     val imageAnalysis = ImageAnalysis.Builder()

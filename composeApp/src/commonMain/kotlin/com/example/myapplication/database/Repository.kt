@@ -7,6 +7,9 @@ import com.example.myapplication.utils.PlatformUtils
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import io.github.jan.supabase.postgrest.postgrest
+import io.github.jan.supabase.auth.auth
+import io.github.jan.supabase.auth.providers.builtin.Email
+import io.github.jan.supabase.postgrest.query.Columns
 
 object AppRepository {
     private var database: AppDatabase? = null
@@ -26,7 +29,10 @@ object AppRepository {
         database = db
         repositoryScope.launch {
             try {
-                pullDataFromCloud()
+                // مزامنة أولية إذا كان هناك مستخدم مسجل
+                if (SupabaseManager.client.auth.currentSessionOrNull() != null) {
+                    pullDataFromCloud()
+                }
                 startPeriodicSync()
             } catch (e: Exception) {
                 println("Sync Error: ${e.message}")
@@ -38,8 +44,10 @@ object AppRepository {
         repositoryScope.launch {
             while (true) {
                 delay(60000)
-                pushDataToCloud()
-                pullDataFromCloud()
+                if (currentUser != null) {
+                    pushDataToCloud()
+                    pullDataFromCloud()
+                }
             }
         }
     }
@@ -57,27 +65,115 @@ object AppRepository {
 
     suspend fun pullDataFromCloud() {
         val client = SupabaseManager.client
-        val d = dao ?: return
+        val shopId = currentUser?.shopId ?: return
         val tables = listOf("users", "products", "phone_devices", "sales", "expenses", "expense_categories", "suppliers")
         tables.forEach { tableName ->
             try {
+                val results = client.postgrest[tableName].select {
+                    filter { eq("shop_id", shopId) }
+                }
                 when (tableName) {
-                    "users" -> client.postgrest[tableName].select().decodeList<User>().forEach { d.insertUser(it.toEntity(true)) }
-                    "phone_devices" -> client.postgrest[tableName].select().decodeList<PhoneDevice>().forEach { d.insertDevice(it.toEntity(true)) }
-                    "products" -> client.postgrest[tableName].select().decodeList<Product>().forEach { d.insertProduct(it.toEntity(true)) }
-                    "sales" -> client.postgrest[tableName].select().decodeList<SaleRecord>().forEach { d.insertSale(it.toEntity(true)) }
-                    "expenses" -> client.postgrest[tableName].select().decodeList<Expense>().forEach { d.insertExpense(it.toEntity(true)) }
-                    "expense_categories" -> client.postgrest[tableName].select().decodeList<ExpenseCategory>().forEach { d.insertCategory(it.toEntity(true)) }
-                    "suppliers" -> client.postgrest[tableName].select().decodeList<Supplier>().forEach { d.insertSupplier(it.toEntity(true)) }
+                    "users" -> results.decodeList<User>().forEach { dao?.insertUser(it.toEntity(true)) }
+                    "phone_devices" -> results.decodeList<PhoneDevice>().forEach { dao?.insertDevice(it.toEntity(true)) }
+                    "products" -> results.decodeList<Product>().forEach { dao?.insertProduct(it.toEntity(true)) }
+                    "sales" -> results.decodeList<SaleRecord>().forEach { dao?.insertSale(it.toEntity(true)) }
+                    "expenses" -> results.decodeList<Expense>().forEach { dao?.insertExpense(it.toEntity(true)) }
+                    "expense_categories" -> results.decodeList<ExpenseCategory>().forEach { dao?.insertCategory(it.toEntity(true)) }
+                    "suppliers" -> results.decodeList<Supplier>().forEach { dao?.insertSupplier(it.toEntity(true)) }
                 }
             } catch (_: Exception) {}
         }
     }
 
+    // --- Authentication & Registration ---
+
+    suspend fun loginUser(email: String, pass: String): Boolean {
+        return try {
+            val client = SupabaseManager.client
+            client.auth.signInWith(Email) {
+                this.email = email
+                this.password = pass
+            }
+            
+            // جلب بيانات المستخدم من جدول users للحصول على shopId والـ role
+            val userProfile = client.postgrest["users"].select {
+                filter { eq("email", email) }
+            }.decodeSingle<User>()
+            
+            currentUser = userProfile
+            pullDataFromCloud()
+            true
+        } catch (e: Exception) {
+            errorFlow.emit("فشل تسجيل الدخول: ${e.message}")
+            false
+        }
+    }
+
+    suspend fun registerNewManager(email: String, pass: String, name: String): Boolean {
+        return try {
+            val client = SupabaseManager.client
+            val authUser = client.auth.signUpWith(Email) {
+                this.email = email
+                this.password = pass
+            }
+            
+            val newUserId = authUser?.id ?: throw Exception("تعذر جلب معرّف المستخدم")
+            val newShopId = "SHOP-${PlatformUtils.currentTimeMillis()}-${(100..999).random()}"
+            
+            val newManager = User(
+                userId = newUserId,
+                username = name,
+                role = UserRole.ADMIN,
+                email = email,
+                password = pass,
+                shopId = newShopId
+            )
+            
+            client.postgrest["users"].insert(newManager)
+            dao?.insertUser(newManager.toEntity(true))
+            currentUser = newManager
+            true
+        } catch (e: Exception) {
+            errorFlow.emit("خطأ أثناء إنشاء حساب المدير: ${e.message}")
+            false
+        }
+    }
+
+    suspend fun registerNewEmployee(email: String, pass: String, name: String): Boolean {
+        return try {
+            val client = SupabaseManager.client
+            val currentShopId = currentUser?.shopId ?: throw Exception("يجب تسجيل الدخول كمدير أولاً")
+            
+            val authUser = client.auth.signUpWith(Email) {
+                this.email = email
+                this.password = pass
+            }
+            
+            val newEmployeeId = authUser?.id ?: throw Exception("تعذر إنشاء حساب الموظف")
+            
+            val newEmployee = User(
+                userId = newEmployeeId,
+                username = name,
+                role = UserRole.EMPLOYEE,
+                email = email,
+                password = pass,
+                shopId = currentShopId
+            )
+            
+            client.postgrest["users"].insert(newEmployee)
+            dao?.insertUser(newEmployee.toEntity(true))
+            true
+        } catch (e: Exception) {
+            errorFlow.emit("فشل إضافة الموظف: ${e.message}")
+            false
+        }
+    }
+
     // --- صيانة ---
     suspend fun addDevice(device: PhoneDevice) {
-        dao?.insertDevice(device.toEntity(false))
-        try { SupabaseManager.client.postgrest["phone_devices"].upsert(device) } catch (_: Exception) {}
+        val deviceWithShop = device.copy(shopId = currentUser?.shopId ?: "")
+        dao?.insertDevice(deviceWithShop.toEntity(false))
+        try { SupabaseManager.client.postgrest["phone_devices"].upsert(deviceWithShop) } catch (_: Exception) {}
         addAuditLog("إضافة جهاز", "صيانة", device.deviceId, device.modelName)
     }
 
@@ -87,8 +183,9 @@ object AppRepository {
     }
 
     suspend fun updateDevice(device: PhoneDevice) {
-        dao?.updateDevice(device.toEntity(false))
-        try { SupabaseManager.client.postgrest["phone_devices"].upsert(device) } catch (_: Exception) {}
+        val deviceWithShop = device.copy(shopId = currentUser?.shopId ?: "")
+        dao?.updateDevice(deviceWithShop.toEntity(false))
+        try { SupabaseManager.client.postgrest["phone_devices"].upsert(deviceWithShop) } catch (_: Exception) {}
     }
 
     suspend fun deleteDevice(deviceId: String) {
@@ -98,14 +195,16 @@ object AppRepository {
 
     // --- منتجات ---
     suspend fun addProduct(product: Product) {
-        dao?.insertProduct(product.toEntity(false))
-        try { SupabaseManager.client.postgrest["products"].upsert(product) } catch (_: Exception) {}
+        val productWithShop = product.copy(shopId = currentUser?.shopId ?: "")
+        dao?.insertProduct(productWithShop.toEntity(false))
+        try { SupabaseManager.client.postgrest["products"].upsert(productWithShop) } catch (_: Exception) {}
         addAuditLog("إضافة منتج", "مخزن", product.productId, product.name)
     }
 
     suspend fun updateProduct(product: Product) {
-        dao?.insertProduct(product.toEntity(false))
-        try { SupabaseManager.client.postgrest["products"].upsert(product) } catch (_: Exception) {}
+        val productWithShop = product.copy(shopId = currentUser?.shopId ?: "")
+        dao?.insertProduct(productWithShop.toEntity(false))
+        try { SupabaseManager.client.postgrest["products"].upsert(productWithShop) } catch (_: Exception) {}
     }
 
     suspend fun deleteProduct(productId: String) {
@@ -115,8 +214,9 @@ object AppRepository {
 
     // --- مستخدمين ---
     suspend fun addUser(user: User) {
-        dao?.insertUser(user.toEntity(false))
-        try { SupabaseManager.client.postgrest["users"].upsert(user) } catch (_: Exception) {}
+        val userWithShop = user.copy(shopId = currentUser?.shopId ?: "")
+        dao?.insertUser(userWithShop.toEntity(false))
+        try { SupabaseManager.client.postgrest["users"].upsert(userWithShop) } catch (_: Exception) {}
     }
 
     suspend fun deleteUser(userId: String) {
@@ -125,8 +225,9 @@ object AppRepository {
     }
 
     suspend fun updateUser(user: User) {
-        dao?.insertUser(user.toEntity(false))
-        try { SupabaseManager.client.postgrest["users"].upsert(user) } catch (_: Exception) {}
+        val userWithShop = user.copy(shopId = currentUser?.shopId ?: "")
+        dao?.insertUser(userWithShop.toEntity(false))
+        try { SupabaseManager.client.postgrest["users"].upsert(userWithShop) } catch (_: Exception) {}
     }
 
     // --- مبيعات ---
@@ -144,7 +245,8 @@ object AppRepository {
                 tvaAmount = (actualPrice * quantity) * 0.19,
                 date = PlatformUtils.currentTimeMillis(),
                 processedBy = currentUser?.username ?: "نظام",
-                customerId = ""
+                customerId = "",
+                shopId = currentUser?.shopId ?: ""
             )
             dao?.insertSale(sale.toEntity(false))
             try { SupabaseManager.client.postgrest["sales"].upsert(sale) } catch (_: Exception) {}
@@ -153,8 +255,9 @@ object AppRepository {
     }
 
     suspend fun updateSale(sale: SaleRecord) {
-        dao?.insertSale(sale.toEntity(false))
-        try { SupabaseManager.client.postgrest["sales"].upsert(sale) } catch (_: Exception) {}
+        val saleWithShop = sale.copy(shopId = currentUser?.shopId ?: "")
+        dao?.insertSale(saleWithShop.toEntity(false))
+        try { SupabaseManager.client.postgrest["sales"].upsert(saleWithShop) } catch (_: Exception) {}
     }
 
     suspend fun deleteSale(saleId: String) {
@@ -163,14 +266,16 @@ object AppRepository {
     }
 
     suspend fun restoreSale(sale: SaleRecord) {
-        dao?.insertSale(sale.toEntity(false))
-        try { SupabaseManager.client.postgrest["sales"].upsert(sale) } catch (_: Exception) {}
+        val saleWithShop = sale.copy(shopId = currentUser?.shopId ?: "")
+        dao?.insertSale(saleWithShop.toEntity(false))
+        try { SupabaseManager.client.postgrest["sales"].upsert(saleWithShop) } catch (_: Exception) {}
     }
 
     // --- مصاريف ---
     suspend fun addExpense(expense: Expense) {
-        dao?.insertExpense(expense.toEntity(false))
-        try { SupabaseManager.client.postgrest["expenses"].upsert(expense) } catch (_: Exception) {}
+        val expenseWithShop = expense.copy(shopId = currentUser?.shopId ?: "")
+        dao?.insertExpense(expenseWithShop.toEntity(false))
+        try { SupabaseManager.client.postgrest["expenses"].upsert(expenseWithShop) } catch (_: Exception) {}
         addAuditLog("مصروف", "مالية", expense.id, expense.description)
     }
 
@@ -180,8 +285,9 @@ object AppRepository {
     }
 
     suspend fun addExpenseCategory(category: ExpenseCategory) {
-        dao?.insertCategory(category.toEntity(false))
-        try { SupabaseManager.client.postgrest["expense_categories"].upsert(category) } catch (_: Exception) {}
+        val categoryWithShop = category.copy(shopId = currentUser?.shopId ?: "")
+        dao?.insertCategory(categoryWithShop.toEntity(false))
+        try { SupabaseManager.client.postgrest["expense_categories"].upsert(categoryWithShop) } catch (_: Exception) {}
     }
 
     suspend fun deleteExpenseCategory(id: String) {
@@ -191,14 +297,16 @@ object AppRepository {
 
     // --- مشتريات ---
     suspend fun addPurchase(purchase: PurchaseRecord) {
-        dao?.insertPurchase(purchase.toEntity(false))
-        try { SupabaseManager.client.postgrest["purchases"].upsert(purchase) } catch (_: Exception) {}
+        val purchaseWithShop = purchase.copy(shopId = currentUser?.shopId ?: "")
+        dao?.insertPurchase(purchaseWithShop.toEntity(false))
+        try { SupabaseManager.client.postgrest["purchases"].upsert(purchaseWithShop) } catch (_: Exception) {}
         addAuditLog("مشتريات", "مالية", purchase.purchaseId, purchase.itemName)
     }
 
     suspend fun updatePurchase(purchase: PurchaseRecord) {
-        dao?.insertPurchase(purchase.toEntity(false))
-        try { SupabaseManager.client.postgrest["purchases"].upsert(purchase) } catch (_: Exception) {}
+        val purchaseWithShop = purchase.copy(shopId = currentUser?.shopId ?: "")
+        dao?.insertPurchase(purchaseWithShop.toEntity(false))
+        try { SupabaseManager.client.postgrest["purchases"].upsert(purchaseWithShop) } catch (_: Exception) {}
     }
 
     suspend fun deletePurchase(purchaseId: String) {
@@ -208,13 +316,15 @@ object AppRepository {
 
     // --- موردين ---
     suspend fun addSupplier(supplier: Supplier) {
-        dao?.insertSupplier(supplier.toEntity(false))
-        try { SupabaseManager.client.postgrest["suppliers"].upsert(supplier) } catch (_: Exception) {}
+        val supplierWithShop = supplier.copy(shopId = currentUser?.shopId ?: "")
+        dao?.insertSupplier(supplierWithShop.toEntity(false))
+        try { SupabaseManager.client.postgrest["suppliers"].upsert(supplierWithShop) } catch (_: Exception) {}
     }
 
     suspend fun updateSupplier(supplier: Supplier) {
-        dao?.insertSupplier(supplier.toEntity(false))
-        try { SupabaseManager.client.postgrest["suppliers"].upsert(supplier) } catch (_: Exception) {}
+        val supplierWithShop = supplier.copy(shopId = currentUser?.shopId ?: "")
+        dao?.insertSupplier(supplierWithShop.toEntity(false))
+        try { SupabaseManager.client.postgrest["suppliers"].upsert(supplierWithShop) } catch (_: Exception) {}
     }
 
     suspend fun deleteSupplier(id: String) {
@@ -224,25 +334,14 @@ object AppRepository {
 
     suspend fun addSupplierPayment(supplierId: String, amount: Double) {
         dao?.updateSupplierDebt(supplierId, amount)
-        // يمكن أيضاً تحديث Supabase هنا إذا كان هناك حقل للدين
     }
 
-    // --- تفعيل وولوج ---
+    // --- تفعيل ---
     suspend fun activateApp(code: String): Boolean {
         return if (code == "sbiai 2024 full") {
             isLocked.value = false
             true
         } else false
-    }
-
-    suspend fun login(email: String, pass: String): User {
-        val user = dao?.getAllUsers()?.first()?.find { it.email.equals(email, true) && it.password == pass }
-        if (user != null) {
-            currentUser = user.toModel()
-            return currentUser!!
-        } else {
-            throw Exception("بيانات الدخول غير صحيحة")
-        }
     }
 
     suspend fun addAuditLog(action: String, targetType: String, targetId: String, details: String) {
@@ -254,7 +353,8 @@ object AppRepository {
             targetType = targetType,
             targetId = targetId,
             timestamp = PlatformUtils.currentTimeMillis(),
-            details = details
+            details = details,
+            shopId = currentUser?.shopId ?: ""
         )
         dao?.insertAuditLog(log.toEntity(false))
         try { SupabaseManager.client.postgrest["audit_logs"].upsert(log) } catch (_: Exception) {}
@@ -268,36 +368,36 @@ object AppRepository {
     val users: Flow<List<User>> get() = dao?.getAllUsers()?.map { it.map { e -> e.toModel() } } ?: flowOf(emptyList())
     val auditLogs: Flow<List<AuditLog>> get() = dao?.getAllAuditLogs()?.map { it.map { e -> e.toModel() } } ?: flowOf(emptyList())
     val purchases: Flow<List<PurchaseRecord>> get() = dao?.getAllPurchases()?.map { it.map { e -> e.toModel() } } ?: flowOf(emptyList())
-    val suppliers: Flow<List<Supplier>> get() = dao?.getAllSuppliers()?.map { it.map { e -> e.toModel() } } ?: flowOf(emptyOf())
+    val suppliers: Flow<List<Supplier>> get() = dao?.getAllSuppliers()?.map { it.map { e -> e.toModel() } } ?: flowOf(emptyList())
     val expenseCategories: Flow<List<ExpenseCategory>> get() = dao?.getAllCategories()?.map { it.map { e -> e.toModel() } } ?: flowOf(emptyList())
 }
 
 // --- Mappers ---
-fun PhoneDeviceEntity.toModel() = PhoneDevice(deviceId, imei, modelName, customerPhone, issueDescription, RepairStatus.valueOf(status), estimatedCost, finalPrice, customerName, assignedTechnicianId, entryDate, warrantyUntil)
-fun PhoneDevice.toEntity(synced: Boolean) = PhoneDeviceEntity(deviceId, customerName, customerPhone, modelName, imei, issueDescription, status.name, estimatedCost, finalPrice, entryDate, warrantyUntil, assignedTechnicianId, synced)
+fun PhoneDeviceEntity.toModel() = PhoneDevice(deviceId, imei, modelName, customerPhone, issueDescription, RepairStatus.valueOf(status), estimatedCost, finalPrice, customerName, assignedTechnicianId, entryDate, warrantyUntil, shopId)
+fun PhoneDevice.toEntity(synced: Boolean) = PhoneDeviceEntity(deviceId, customerName, customerPhone, modelName, imei, issueDescription, status.name, estimatedCost, finalPrice, entryDate, warrantyUntil, assignedTechnicianId, synced, shopId)
 
-fun ProductEntity.toModel() = Product(productId, name, category, buyPrice, sellPrice, wholesalePrice, stockQuantity, minStockAlert, barcode)
-fun Product.toEntity(synced: Boolean) = ProductEntity(productId, name, category, buyPrice, sellPrice, wholesalePrice, stockQuantity, minStockAlert, barcode, synced)
+fun ProductEntity.toModel() = Product(productId, name, category, buyPrice, sellPrice, wholesalePrice, stockQuantity, minStockAlert, barcode, shopId)
+fun Product.toEntity(synced: Boolean) = ProductEntity(productId, name, category, buyPrice, sellPrice, wholesalePrice, stockQuantity, minStockAlert, barcode, synced, shopId)
 
-fun SaleEntity.toModel() = SaleRecord(saleId, description, amount, profit, soldAtPrice, tvaAmount, date, processedBy, customerId)
-fun SaleRecord.toEntity(synced: Boolean) = SaleEntity(saleId, description, amount, profit, soldAtPrice, tvaAmount, date, processedBy, customerId, synced)
+fun SaleEntity.toModel() = SaleRecord(saleId, description, amount, profit, soldAtPrice, tvaAmount, date, processedBy, customerId, shopId)
+fun SaleRecord.toEntity(synced: Boolean) = SaleEntity(saleId, description, amount, profit, soldAtPrice, tvaAmount, date, processedBy, customerId, synced, shopId)
 
-fun UserEntity.toModel() = User(userId, username, UserRole.valueOf(role), email, password, isActive, pinCode)
-fun User.toEntity(synced: Boolean) = UserEntity(userId, username, role.name, email, password, pinCode, isActive, synced)
+fun UserEntity.toModel() = User(userId, username, UserRole.valueOf(role), email, password, isActive, pinCode, shopId)
+fun User.toEntity(synced: Boolean) = UserEntity(userId, username, role.name, email, password, pinCode, isActive, synced, shopId)
 
-fun ExpenseEntity.toModel() = Expense(id, description, category, amount, date)
-fun Expense.toEntity(synced: Boolean) = ExpenseEntity(id, description, category, amount, date, synced)
+fun ExpenseEntity.toModel() = Expense(id, description, category, amount, date, shopId)
+fun Expense.toEntity(synced: Boolean) = ExpenseEntity(id, description, category, amount, date, synced, shopId)
 
-fun AuditLogEntity.toModel() = AuditLog(logId, userId, userName, action, targetType, targetId, timestamp, details)
-fun AuditLog.toEntity(synced: Boolean) = AuditLogEntity(logId, userId, userName, action, targetType, targetId, timestamp, details, synced)
+fun AuditLogEntity.toModel() = AuditLog(logId, userId, userName, action, targetType, targetId, timestamp, details, shopId)
+fun AuditLog.toEntity(synced: Boolean) = AuditLogEntity(logId, userId, userName, action, targetType, targetId, timestamp, details, synced, shopId)
 
-fun PurchaseEntity.toModel() = PurchaseRecord(purchaseId, itemName, category, quantity, unitCost, totalCost, supplierName, date, isPaid)
-fun PurchaseRecord.toEntity(synced: Boolean) = PurchaseEntity(purchaseId, itemName, category, quantity, unitCost, totalCost, supplierName, date, isPaid, synced)
+fun PurchaseEntity.toModel() = PurchaseRecord(purchaseId, itemName, category, quantity, unitCost, totalCost, supplierName, date, isPaid, shopId)
+fun PurchaseRecord.toEntity(synced: Boolean) = PurchaseEntity(purchaseId, itemName, category, quantity, unitCost, totalCost, supplierName, date, isPaid, synced, shopId)
 
-fun SupplierEntity.toModel() = Supplier(supplierId, name, phoneNumber, totalDebt)
-fun Supplier.toEntity(synced: Boolean) = SupplierEntity(supplierId, name, phoneNumber, totalDebt, synced)
+fun SupplierEntity.toModel() = Supplier(supplierId, name, phoneNumber, totalDebt, shopId)
+fun Supplier.toEntity(synced: Boolean) = SupplierEntity(supplierId, name, phoneNumber, totalDebt, synced, shopId)
 
-fun ExpenseCategoryEntity.toModel() = ExpenseCategory(id, name)
-fun ExpenseCategory.toEntity(synced: Boolean) = ExpenseCategoryEntity(id, name, synced)
+fun ExpenseCategoryEntity.toModel() = ExpenseCategory(id, name, shopId)
+fun ExpenseCategory.toEntity(synced: Boolean) = ExpenseCategoryEntity(id, name, synced, shopId)
 
 fun <T> emptyOf(): List<T> = emptyList()

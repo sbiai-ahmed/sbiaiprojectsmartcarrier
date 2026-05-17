@@ -22,6 +22,7 @@ sealed class Screen(val route: String) {
     object Purchases : Screen("purchases")
     object Suppliers : Screen("suppliers")
     object Sales : Screen("sales")
+    object Registration : Screen("registration")
     object EditDevice : Screen("edit_device/{deviceId}") {
         fun createRoute(deviceId: String) = "edit_device/$deviceId"
     }
@@ -33,21 +34,37 @@ fun AppNavigation() {
 
     NavHost(navController = navController, startDestination = Screen.Login.route) {
         composable(Screen.Login.route) {
-            LoginScreen(onLoginSuccess = { user ->
-                AppRepository.currentUser = user
+            LoginScreen(
+                onLoginSuccess = { user ->
+                    AppRepository.currentUser = user
 
-                if (user.role == UserRole.ADMIN) {
+                    if (user.role == UserRole.ADMIN) {
+                        navController.navigate(Screen.AdminDashboard.route) {
+                            popUpTo(Screen.Login.route) { inclusive = true }
+                            launchSingleTop = true
+                        }
+                    } else {
+                        navController.navigate(Screen.Reception.route) {
+                            popUpTo(Screen.Login.route) { inclusive = true }
+                            launchSingleTop = true
+                        }
+                    }
+                },
+                onNavigateToRegister = {
+                    navController.navigate(Screen.Registration.route)
+                }
+            )
+        }
+
+        composable(Screen.Registration.route) {
+            RegistrationScreen(
+                onRegisterSuccess = {
                     navController.navigate(Screen.AdminDashboard.route) {
                         popUpTo(Screen.Login.route) { inclusive = true }
-                        launchSingleTop = true
                     }
-                } else {
-                    navController.navigate(Screen.Reception.route) {
-                        popUpTo(Screen.Login.route) { inclusive = true }
-                        launchSingleTop = true
-                    }
-                }
-            })
+                },
+                onBack = { navController.popBackStack() }
+            )
         }
         
         composable(Screen.AdminDashboard.route) {

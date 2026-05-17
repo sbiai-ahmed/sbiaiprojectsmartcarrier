@@ -12,7 +12,7 @@ enum class RepairStatus {
     @SerialName("REPAIRING") REPAIRING,
     @SerialName("COMPLETED") COMPLETED,
     @SerialName("DELIVERED") DELIVERED,
-    @SerialName("DELAYED") DELAYED, // تمت الإضافة بناءً على طلبك
+    @SerialName("DELAYED") DELAYED,
     @SerialName("CANCELLED") CANCELLED
 }
 
@@ -33,7 +33,8 @@ data class User(
     @SerialName("email") val email: String,
     @SerialName("password") val password: String,
     @SerialName("isActive") val isActive: Boolean = true,
-    @SerialName("pinCode") val pinCode: String = ""
+    @SerialName("pinCode") val pinCode: String = "",
+    @SerialName("shop_id") val shopId: String = ""
 )
 
 @Serializable
@@ -49,7 +50,8 @@ data class PhoneDevice(
     @SerialName("customerName") val customerName: String,
     @SerialName("assignedTechnicianId") val assignedTechnicianId: String = "",
     @SerialName("entryDate") val entryDate: Long = 0L,
-    @SerialName("warrantyUntil") val warrantyUntil: Long? = null
+    @SerialName("warrantyUntil") val warrantyUntil: Long? = null,
+    @SerialName("shop_id") val shopId: String = ""
 )
 
 @Serializable
@@ -62,7 +64,8 @@ data class Product(
     @SerialName("wholesalePrice") val wholesalePrice: Double = 0.0,
     @SerialName("stockQuantity") val stockQuantity: Int,
     @SerialName("minStockAlert") val minStockAlert: Int = 2,
-    @SerialName("barcode") val barcode: String = ""
+    @SerialName("barcode") val barcode: String = "",
+    @SerialName("shop_id") val shopId: String = ""
 )
 
 @Serializable
@@ -71,11 +74,12 @@ data class SaleRecord(
     @SerialName("description") val description: String,
     @SerialName("amount") val amount: Double,
     @SerialName("profit") val profit: Double,
-    @SerialName("soldAtPrice") val soldAtPrice: Double, // تمت الإضافة لحماية الموظف
+    @SerialName("soldAtPrice") val soldAtPrice: Double,
     @SerialName("tvaAmount") val tvaAmount: Double = 0.0,
     @SerialName("date") val date: Long,
     @SerialName("processedBy") val processedBy: String,
-    @SerialName("customerId") val customerId: String = ""
+    @SerialName("customerId") val customerId: String = "",
+    @SerialName("shop_id") val shopId: String = ""
 )
 
 @Serializable
@@ -84,13 +88,15 @@ data class Expense(
     @SerialName("description") val description: String,
     @SerialName("category") val category: String,
     @SerialName("amount") val amount: Double,
-    @SerialName("date") val date: Long
+    @SerialName("date") val date: Long,
+    @SerialName("shop_id") val shopId: String = ""
 )
 
 @Serializable
 data class ExpenseCategory(
     @SerialName("id") val id: String,
-    @SerialName("name") val name: String
+    @SerialName("name") val name: String,
+    @SerialName("shop_id") val shopId: String = ""
 )
 
 @Serializable
@@ -102,7 +108,8 @@ data class AuditLog(
     @SerialName("targetType") val targetType: String,
     @SerialName("targetId") val targetId: String,
     @SerialName("timestamp") val timestamp: Long,
-    @SerialName("details") val details: String
+    @SerialName("details") val details: String,
+    @SerialName("shop_id") val shopId: String = ""
 )
 
 @Serializable
@@ -110,7 +117,8 @@ data class Supplier(
     @SerialName("supplierId") val supplierId: String,
     @SerialName("name") val name: String,
     @SerialName("phoneNumber") val phoneNumber: String,
-    @SerialName("totalDebt") val totalDebt: Double
+    @SerialName("totalDebt") val totalDebt: Double,
+    @SerialName("shop_id") val shopId: String = ""
 )
 
 @Serializable
@@ -123,7 +131,8 @@ data class PurchaseRecord(
     @SerialName("totalCost") val totalCost: Double,
     @SerialName("supplierName") val supplierName: String,
     @SerialName("date") val date: Long,
-    @SerialName("isPaid") val isPaid: Boolean
+    @SerialName("isPaid") val isPaid: Boolean,
+    @SerialName("shop_id") val shopId: String = ""
 )
 
 @Serializable
@@ -131,7 +140,8 @@ data class Section(
     @SerialName("id") val id: String,
     @SerialName("name") val name: String,
     @SerialName("userId") val userId: String,
-    @SerialName("iconName") val iconName: String
+    @SerialName("iconName") val iconName: String,
+    @SerialName("shop_id") val shopId: String = ""
 )
 
 @Serializable
