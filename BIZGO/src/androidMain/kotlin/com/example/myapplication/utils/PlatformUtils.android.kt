@@ -1,17 +1,28 @@
 package com.example.myapplication.utils
 
 import android.annotation.SuppressLint
+import android.app.Activity
 import android.content.Context
 import android.content.Intent
+import android.os.Handler
+import android.os.Looper
+import android.webkit.WebView
+import android.webkit.WebViewClient
+import android.print.PrintManager
+import android.print.PrintAttributes
 import androidx.core.content.FileProvider
 import java.io.File
+import java.lang.ref.WeakReference
 
 @SuppressLint("StaticFieldLeak")
 actual object PlatformUtils {
     private var context: Context? = null
+    private var activityRef: WeakReference<Activity>? = null
+    private var currentWebView: WebView? = null // لمنع الـ GC أثناء عملية الطباعة
 
-    fun init(ctx: Context) {
-        context = ctx.applicationContext
+    fun init(activity: Activity) {
+        context = activity.applicationContext
+        activityRef = WeakReference(activity)
     }
 
     actual fun saveAndShareFile(fileName: String, content: String, mimeType: String) {
@@ -37,31 +48,63 @@ actual object PlatformUtils {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
             
-            currentContext.startActivity(
-                Intent.createChooser(intent, "تصدير التقرير").apply {
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                }
-            )
+            val activity = activityRef?.get()
+            if (activity != null) {
+                activity.startActivity(Intent.createChooser(intent, "تصدير التقرير"))
+            } else {
+                currentContext.startActivity(
+                    Intent.createChooser(intent, "تصدير التقرير").apply {
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    }
+                )
+            }
         } catch (e: Exception) {
             e.printStackTrace()
         }
     }
 
     actual fun printHtml(html: String, jobName: String) {
-        val currentContext = context ?: return
-        val webView = android.webkit.WebView(currentContext)
-        webView.webViewClient = object : android.webkit.WebViewClient() {
-            override fun onPageFinished(view: android.webkit.WebView?, url: String?) {
-                val printManager = currentContext.getSystemService(Context.PRINT_SERVICE) as android.print.PrintManager
-                val printAdapter = webView.createPrintDocumentAdapter(jobName)
-                printManager.print(
-                    jobName, 
-                    printAdapter, 
-                    android.print.PrintAttributes.Builder().build()
-                )
+        val activity = activityRef?.get() ?: return
+        
+        Handler(Looper.getMainLooper()).post {
+            try {
+                // إنشاء WebView مع سياق النشاط (ضروري جداً)
+                val webView = WebView(activity)
+                currentWebView = webView
+                
+                webView.webViewClient = object : WebViewClient() {
+                    override fun onPageFinished(view: WebView?, url: String?) {
+                        try {
+                            val printManager = activity.getSystemService(Context.PRINT_SERVICE) as? PrintManager
+                            if (printManager != null) {
+                                // إنشاء محول الطباعة من الـ WebView
+                                val printAdapter = webView.createPrintDocumentAdapter(jobName)
+                                
+                                // بدء عملية الطباعة
+                                printManager.print(
+                                    jobName, 
+                                    printAdapter, 
+                                    PrintAttributes.Builder().build()
+                                )
+                            }
+                        } catch (e: Exception) {
+                            println("Printing failed: ${e.message}")
+                        }
+                    }
+                }
+                
+                // إعدادات الـ WebView لضمان عرض المحتوى بشكل صحيح
+                webView.settings.defaultTextEncodingName = "UTF-8"
+                
+                // إضافة غطاء HTML كامل لضمان استقرار العرض
+                val fullHtml = "<html><head><meta charset='utf-8'></head><body>$html</body></html>"
+                
+                // تحميل البيانات
+                webView.loadDataWithBaseURL("file:///android_asset/", fullHtml, "text/html", "UTF-8", null)
+            } catch (e: Exception) {
+                println("Critical print error: ${e.message}")
             }
         }
-        webView.loadDataWithBaseURL(null, html, "text/html", "UTF-8", null)
     }
 
     actual fun currentTimeMillis(): Long = System.currentTimeMillis()

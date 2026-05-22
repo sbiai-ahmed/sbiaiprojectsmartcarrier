@@ -32,7 +32,7 @@ object ReportExporter {
 
     fun generateHTML(data: ReportsData): String {
         return """
-            <dir dir="rtl" style="font-family: Arial, sans-serif; padding: 20px;">
+            <div dir="rtl" style="font-family: Arial, sans-serif; padding: 20px;">
                 <h1 style="color: #6200EE; text-align: center;">تقرير الأداء المالي - BIZGO</h1>
                 <hr>
                 <div style="background: #f5f5f5; padding: 15px; border-radius: 10px; margin-bottom: 20px;">
@@ -58,7 +58,7 @@ object ReportExporter {
                     """ }}
                 </table>
                 <p style="text-align: center; color: gray; margin-top: 30px;">تم استخراج التقرير بتاريخ: ${PlatformUtils.formatDate(PlatformUtils.currentTimeMillis())}</p>
-            </dir>
+            </div>
         """.trimIndent()
     }
 }
