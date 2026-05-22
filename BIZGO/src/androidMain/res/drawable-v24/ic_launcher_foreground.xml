@@ -1,0 +1,35 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <group
+        android:translateX="14"
+        android:translateY="14">
+
+        <!-- Cart Body -->
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M16.5,23.5 L19.5,23.5 L24.5,45.5 L64.5,45.5 L69.5,23.5 L72.5,23.5 L66.5,50.5 L22.5,50.5 L16.5,23.5 Z" />
+
+        <!-- Cart Handle -->
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M10,15 L20,15 L22,23 L18,23 L16,19 L10,19 Z" />
+
+        <!-- Wheels -->
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M28,58 A5,5 0 1,1 28,68 A5,5 0 1,1 28,58" />
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M58,58 A5,5 0 1,1 58,68 A5,5 0 1,1 58,58" />
+
+        <!-- Logo inside/above cart -->
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M44,15 L34,30 L54,30 Z" />
+
+    </group>
+</vector>

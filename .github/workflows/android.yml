@@ -22,10 +22,10 @@ jobs:
       run: chmod +x gradlew
 
     - name: Build with Gradle
-      run: ./gradlew :composeApp:assembleDebug
+      run: ./gradlew :BIZGO:assembleDebug
 
     - name: Upload APK
       uses: actions/upload-artifact@v4
       with:
         name: my-app-debug-apk
-        path: composeApp/build/outputs/apk/debug/*.apk
+        path: BIZGO/build/outputs/apk/debug/*.apk
