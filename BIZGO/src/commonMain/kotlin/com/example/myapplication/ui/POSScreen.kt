@@ -30,7 +30,8 @@ import kotlinx.coroutines.launch
 data class CartItem(
     val product: Product,
     var quantity: Int,
-    val pricePerUnit: Double
+    val pricePerUnit: Double,
+    val id: String = product.productId // لتميز العناصر بشكل فريد
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -38,10 +39,11 @@ data class CartItem(
 fun POSScreen(onBack: () -> Unit) {
     val scope = rememberCoroutineScope()
     var products by remember { mutableStateOf<List<Product>>(emptyList()) }
-    var cartItems by remember { mutableStateOf<MutableList<CartItem>>(mutableListOf()) }
+    var cartItems by remember { mutableStateOf<List<CartItem>>(emptyList()) }
     var selectedProduct by remember { mutableStateOf<Product?>(null) }
     var showProductDialog by remember { mutableStateOf(false) }
     var showPaymentDialog by remember { mutableStateOf(false) }
+    var showErrorMessage by remember { mutableStateOf("") }
     var searchQuery by remember { mutableStateOf("") }
     var selectedPriceType by remember { mutableStateOf("normal") } // normal, wholesale
 
@@ -58,6 +60,7 @@ fun POSScreen(onBack: () -> Unit) {
 
     val totalAmount = cartItems.sumOf { it.quantity * it.pricePerUnit }
     val totalTax = totalAmount * 0.19
+    val grandTotal = totalAmount + totalTax
 
     Scaffold(
         topBar = {
@@ -89,12 +92,44 @@ fun POSScreen(onBack: () -> Unit) {
                     shape = RoundedCornerShape(8.dp)
                 )
 
+                if (showErrorMessage.isNotEmpty()) {
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(8.dp),
+                        shape = RoundedCornerShape(8.dp),
+                        color = Color(0xFFFFEBEE)
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(12.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                showErrorMessage,
+                                color = Color(0xFFC62828),
+                                fontSize = 12.sp,
+                                modifier = Modifier.weight(1f)
+                            )
+                            IconButton(
+                                onClick = { showErrorMessage = "" },
+                                modifier = Modifier.size(20.dp)
+                            ) {
+                                Icon(Icons.Default.Close, null, modifier = Modifier.size(16.dp))
+                            }
+                        }
+                    }
+                }
+
                 LazyColumn(modifier = Modifier.fillMaxSize()) {
                     items(filteredProducts) { product ->
                         ProductCard(
                             product = product,
                             onClick = {
                                 selectedProduct = product
+                                selectedPriceType = "normal"
                                 showProductDialog = true
                             }
                         )
@@ -128,17 +163,21 @@ fun POSScreen(onBack: () -> Unit) {
                         modifier = Modifier.padding(24.dp)
                     )
                 } else {
-                    cartItems.forEachIndexed { index, cartItem ->
+                    cartItems.forEach { cartItem ->
                         CartItemCard(
                             cartItem = cartItem,
                             onQuantityChange = { newQuantity ->
                                 if (newQuantity > 0) {
-                                    cartItems[index].quantity = newQuantity
+                                    cartItems = cartItems.map { item ->
+                                        if (item.id == cartItem.id) item.copy(quantity = newQuantity) else item
+                                    }
                                 } else {
-                                    cartItems.removeAt(index)
+                                    cartItems = cartItems.filter { it.id != cartItem.id }
                                 }
                             },
-                            onRemove = { cartItems.removeAt(index) }
+                            onRemove = { 
+                                cartItems = cartItems.filter { it.id != cartItem.id }
+                            }
                         )
                     }
                 }
@@ -175,7 +214,7 @@ fun POSScreen(onBack: () -> Unit) {
                         ) {
                             Text("الإجمالي:", fontWeight = FontWeight.Bold)
                             Text(
-                                "%.2f DA".format(totalAmount + totalTax),
+                                "%.2f DA".format(grandTotal),
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 18.sp,
                                 color = MaterialTheme.colorScheme.primary
@@ -206,7 +245,7 @@ fun POSScreen(onBack: () -> Unit) {
 
                 // زر مسح السلة
                 OutlinedButton(
-                    onClick = { cartItems.clear() },
+                    onClick = { cartItems = emptyList() },
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(50.dp)
@@ -222,32 +261,99 @@ fun POSScreen(onBack: () -> Unit) {
         }
     }
 
-    // حوار اختيار السعر
+    // حوار اختيار السعر والكمية
     if (showProductDialog && selectedProduct != null) {
+        var quantityInput by remember { mutableStateOf("1") }
+        var priceError by remember { mutableStateOf("") }
+
         AlertDialog(
             onDismissRequest = { showProductDialog = false },
             title = { Text(selectedProduct!!.name) },
             text = {
                 Column {
-                    Text("السعر العادي: ${selectedProduct!!.sellPrice} DA")
-                    Text("السعر الجملة: ${selectedProduct!!.wholesalePrice} DA")
-                    Text("المتاح: ${selectedProduct!!.stockQuantity} وحدة")
+                    Text("السعر العادي: ${selectedProduct!!.sellPrice} DA", fontSize = 12.sp)
+                    Text("السعر الجملة: ${selectedProduct!!.wholesalePrice} DA", fontSize = 12.sp)
+                    Text("المتاح: ${selectedProduct!!.stockQuantity} وحدة", fontSize = 12.sp)
+                    
+                    Spacer(modifier = Modifier.height(12.dp))
+                    
+                    Text("اختر نوع السعر:", fontWeight = FontWeight.Bold)
+                    Row(modifier = Modifier.padding(top = 8.dp)) {
+                        RadioButton(
+                            selected = selectedPriceType == "normal",
+                            onClick = { selectedPriceType = "normal" }
+                        )
+                        Text("عادي", modifier = Modifier.align(Alignment.CenterVertically))
+                        Spacer(modifier = Modifier.width(16.dp))
+                        RadioButton(
+                            selected = selectedPriceType == "wholesale",
+                            onClick = { selectedPriceType = "wholesale" }
+                        )
+                        Text("جملة", modifier = Modifier.align(Alignment.CenterVertically))
+                    }
+                    
+                    Spacer(modifier = Modifier.height(12.dp))
+                    
+                    OutlinedTextField(
+                        value = quantityInput,
+                        onValueChange = { 
+                            quantityInput = it
+                            priceError = ""
+                        },
+                        label = { Text("الكمية") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true
+                    )
+                    
+                    if (priceError.isNotEmpty()) {
+                        Text(
+                            priceError,
+                            color = Color(0xFFC62828),
+                            fontSize = 10.sp,
+                            modifier = Modifier.padding(top = 4.dp)
+                        )
+                    }
                 }
             },
             confirmButton = {
                 TextButton(onClick = {
-                    val newItem = CartItem(
-                        selectedProduct!!,
-                        1,
-                        selectedProduct!!.sellPrice
-                    )
-                    val existingItem = cartItems.find { it.product.productId == selectedProduct!!.productId }
-                    if (existingItem != null) {
-                        existingItem.quantity++
-                    } else {
-                        cartItems.add(newItem)
+                    val quantity = quantityInput.toIntOrNull()
+                    when {
+                        quantity == null || quantity <= 0 -> {
+                            priceError = "الرجاء إدخال كمية صحيحة"
+                        }
+                        quantity > selectedProduct!!.stockQuantity -> {
+                            priceError = "الكمية تتجاوز المتاح (${selectedProduct!!.stockQuantity} وحدة)"
+                        }
+                        else -> {
+                            val price = if (selectedPriceType == "normal") {
+                                selectedProduct!!.sellPrice
+                            } else {
+                                selectedProduct!!.wholesalePrice
+                            }
+                            
+                            val newItem = CartItem(
+                                selectedProduct!!,
+                                quantity,
+                                price
+                            )
+                            
+                            val existingItem = cartItems.find { it.id == selectedProduct!!.productId }
+                            cartItems = if (existingItem != null) {
+                                cartItems.map { item ->
+                                    if (item.id == selectedProduct!!.productId) {
+                                        item.copy(quantity = item.quantity + quantity)
+                                    } else {
+                                        item
+                                    }
+                                }
+                            } else {
+                                cartItems + newItem
+                            }
+                            showProductDialog = false
+                        }
                     }
-                    showProductDialog = false
                 }) {
                     Text("إضافة للسلة")
                 }
@@ -263,7 +369,7 @@ fun POSScreen(onBack: () -> Unit) {
     // حوار الدفع
     if (showPaymentDialog) {
         PaymentDialog(
-            totalAmount = totalAmount + totalTax,
+            totalAmount = grandTotal,
             onConfirm = { paymentAmount ->
                 scope.launch {
                     // تسجيل كل عملية بيع
@@ -274,8 +380,9 @@ fun POSScreen(onBack: () -> Unit) {
                             cartItem.pricePerUnit
                         )
                     }
-                    cartItems.clear()
+                    cartItems = emptyList()
                     showPaymentDialog = false
+                    showErrorMessage = "تم إتمام الدفع بنجاح!"
                 }
             },
             onDismiss = { showPaymentDialog = false }
@@ -352,7 +459,7 @@ fun CartItemCard(
                     onClick = onRemove,
                     modifier = Modifier.size(20.dp)
                 ) {
-                    Icon(Icons.Default.Delete, null, modifier = Modifier.size(16.dp))
+                    Icon(Icons.Default.Delete, null, modifier = Modifier.size(16.dp), tint = Color.Red)
                 }
             }
 
@@ -375,7 +482,7 @@ fun CartItemCard(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(top = 4.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
+                horizontalArrangement = Arrangement.Center,
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Button(
@@ -386,7 +493,7 @@ fun CartItemCard(
                 ) {
                     Text("-", fontWeight = FontWeight.Bold, fontSize = 12.sp)
                 }
-                Text(cartItem.quantity.toString(), fontSize = 11.sp)
+                Text(cartItem.quantity.toString(), fontSize = 11.sp, modifier = Modifier.padding(horizontal = 12.dp))
                 Button(
                     onClick = { onQuantityChange(cartItem.quantity + 1) },
                     modifier = Modifier.size(28.dp),
@@ -407,25 +514,73 @@ fun PaymentDialog(
     onDismiss: () -> Unit
 ) {
     var paymentAmount by remember { mutableStateOf(totalAmount.toString()) }
-    var paymentMethod by remember { mutableStateOf("cash") } // cash, card, check
+    var paymentMethod by remember { mutableStateOf("cash") } // cash, card
+    var changeAmount by remember { mutableStateOf(0.0) }
+    var paymentError by remember { mutableStateOf("") }
+
+    LaunchedEffect(paymentAmount) {
+        val amount = paymentAmount.toDoubleOrNull() ?: 0.0
+        changeAmount = (amount - totalAmount).coerceAtLeast(0.0)
+        paymentError = if (amount < totalAmount) "المبلغ أقل من المطلوب" else ""
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("الدفع") },
         text = {
-            Column {
-                Text("المبلغ المطلوب: %.2f DA".format(totalAmount), fontWeight = FontWeight.Bold)
+            Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                Text(
+                    "المبلغ المطلوب: %.2f DA".format(totalAmount),
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 14.sp
+                )
                 Spacer(modifier = Modifier.height(12.dp))
                 OutlinedTextField(
                     value = paymentAmount,
                     onValueChange = { paymentAmount = it },
                     label = { Text("المبلغ المدفوع") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    modifier = Modifier.fillMaxWidth()
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    modifier = Modifier.fillMaxWidth(),
+                    isError = paymentError.isNotEmpty()
                 )
+                if (paymentError.isNotEmpty()) {
+                    Text(
+                        paymentError,
+                        color = Color(0xFFC62828),
+                        fontSize = 10.sp,
+                        modifier = Modifier.padding(top = 4.dp)
+                    )
+                }
+                
                 Spacer(modifier = Modifier.height(12.dp))
+                
+                // عرض الرصيد
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 8.dp),
+                    shape = RoundedCornerShape(8.dp),
+                    color = if (changeAmount >= 0) Color(0xFFE8F5E9) else Color(0xFFFFEBEE)
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(12.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text("الرصيد:", fontWeight = FontWeight.Bold)
+                        Text(
+                            "%.2f DA".format(changeAmount),
+                            fontWeight = FontWeight.Bold,
+                            color = if (changeAmount >= 0) Color(0xFF2E7D32) else Color(0xFFC62828)
+                        )
+                    }
+                }
+                
+                Spacer(modifier = Modifier.height(12.dp))
+                
                 Text("طريقة الدفع:", fontWeight = FontWeight.Bold)
-                Row {
+                Row(modifier = Modifier.padding(top = 8.dp)) {
                     RadioButton(
                         selected = paymentMethod == "cash",
                         onClick = { paymentMethod = "cash" }
@@ -442,9 +597,15 @@ fun PaymentDialog(
             }
         },
         confirmButton = {
-            Button(onClick = {
-                onConfirm(paymentAmount.toDoubleOrNull() ?: totalAmount)
-            }) {
+            Button(
+                onClick = {
+                    val amount = paymentAmount.toDoubleOrNull() ?: 0.0
+                    if (amount >= totalAmount) {
+                        onConfirm(amount)
+                    }
+                },
+                enabled = paymentError.isEmpty() && paymentAmount.toDoubleOrNull() ?: 0.0 >= totalAmount
+            ) {
                 Text("تأكيد الدفع")
             }
         },
