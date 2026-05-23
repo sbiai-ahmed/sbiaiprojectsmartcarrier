@@ -13,6 +13,7 @@ sealed class Screen(val route: String) {
     object Login : Screen("login")
     object AdminDashboard : Screen("admin_dashboard")
     object Reception : Screen("employee_reception")
+    object POS : Screen("pos") // 🆕 شاشة نقطة البيع الجديدة
     object Search : Screen("search")
     object RepairsList : Screen("repairs_list")
     object UserManagement : Screen("user_management")
@@ -94,8 +95,16 @@ fun AppNavigation() {
                 },
                 onNavigateToSales = {
                     navController.navigate(Screen.Sales.route) { launchSingleTop = true }
+                },
+                onNavigateToPOS = {
+                    navController.navigate(Screen.POS.route) { launchSingleTop = true }
                 }
             )
+        }
+        
+        // 🆕 شاشة نقطة البيع (POS)
+        composable(Screen.POS.route) {
+            POSScreen(onBack = { navController.popBackStack() })
         }
         
         composable(Screen.Reports.route) {
@@ -137,6 +146,9 @@ fun AppNavigation() {
                 },
                 onNavigateToSales = {
                     navController.navigate(Screen.Sales.route) { launchSingleTop = true }
+                },
+                onNavigateToPOS = {
+                    navController.navigate(Screen.POS.route) { launchSingleTop = true }
                 }
             )
         }
