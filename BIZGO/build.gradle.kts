@@ -17,6 +17,8 @@ room {
 
 composeCompiler {
     enableStrongSkippingMode.set(true)
+    // ✅ تحسين الأداء: تمكين optimizations إضافية
+    enableIntrinsicRemember.set(true)
 }
 
 kotlin {
@@ -74,7 +76,6 @@ kotlin {
             implementation(compose.desktop.currentOs)
             implementation(libs.kotlinx.coroutinesSwing)
             
-            // 🔥 تدعيم نسخة الـ Desktop بالمكتبات المسببة للمشكلة بشكل مباشر
             implementation(libs.kotlinx.datetime)
             implementation(libs.kotlinx.serialization.json)
             implementation(libs.kotlinx.serialization.core)
@@ -92,17 +93,40 @@ android {
         targetSdk = libs.versions.android.targetSdk.get().toInt()
         versionCode = 1
         versionName = "1.0"
+        
+        // ✅ تحسين الحجم: تحديد اللغات والـ ABIs
+        resConfigs("en", "ar")
+        ndk {
+            abiFilters("arm64-v8a", "armeabi-v7a")
+        }
     }
+    
     packaging {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
+            excludes += "META-INF/proguard/androidx-*.pro"
+            excludes += "META-INF/*.kotlin_module"
+            excludes += "**/BuildConfig.class"
         }
     }
+    
     buildTypes {
-        getByName("release") {
+        debug {
+            isDebuggable = true
             isMinifyEnabled = false
         }
+        release {
+            isDebuggable = false
+            // ✅ تحسين الحجم: تفعيل ProGuard/R8 و Shrinking
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
+        }
     }
+    
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
@@ -114,7 +138,6 @@ dependencies {
     add("kspAndroid", libs.androidx.room.compiler)
     add("kspJvm", libs.androidx.room.compiler)
     
-    // محرك طباعة بسيط لـ SLF4J لإصلاح تحذيرات السجلات
     implementation("org.slf4j:slf4j-simple:2.0.13")
 }
 
