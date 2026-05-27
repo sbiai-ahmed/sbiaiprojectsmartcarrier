@@ -238,7 +238,7 @@ fun POSScreen(onBack: () -> Unit) {
                     enabled = cartItems.isNotEmpty(),
                     shape = RoundedCornerShape(8.dp)
                 ) {
-                    Icon(Icons.Default.PaymentOutlined, null, modifier = Modifier.size(20.dp))
+                    Icon(Icons.Default.Payment, null, modifier = Modifier.size(20.dp))
                     Spacer(modifier = Modifier.width(8.dp))
                     Text("إتمام الدفع", fontWeight = FontWeight.Bold)
                 }
